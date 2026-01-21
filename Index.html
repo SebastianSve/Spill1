@@ -1,1 +1,167 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <title>Skytespill i byen</title>
+   <style>
+       body {
+           margin: 0;
+           overflow: hidden;
+           background-color: #87CEEB; /* Solskinnsdag bakgrunn */
+       }
+       canvas {
+           display: block;
+       }
+       #score {
+           position: absolute;
+           top: 10px;
+           left: 10px;
+           font-size: 24px;
+           color: black;
+       }
+   </style>
+</head>
+<body>
+   <div id="score">Poeng: 0</div>
+   <canvas id="gameCanvas"></canvas>
 
+   <script>
+       const canvas = document.getElementById("gameCanvas");
+       const ctx = canvas.getContext("2d");
+
+       // Justere canvas-størrelse til vinduets størrelse
+       canvas.width = window.innerWidth;
+       canvas.height = window.innerHeight;
+
+       let score = 0;
+
+       // Spillerens egenskaper
+       const player = {
+           x: canvas.width / 2 - 25,
+           y: canvas.height - 100,
+           width: 50,
+           height: 50,
+           speed: 5,
+           color: 'green'
+       };
+
+       const bullets = [];
+       const bulletSpeed = 7;
+
+       const enemies = [];
+       const enemySpeed = 2;
+
+       // Lag fiende
+       function createEnemy() {
+           const enemy = {
+               x: Math.random() * canvas.width,
+               y: -50,
+               width: 50,
+               height: 50,
+               speed: enemySpeed,
+               color: 'red'
+           };
+           enemies.push(enemy);
+       }
+
+       // Tegne spilleren
+       function drawPlayer() {
+           ctx.fillStyle = player.color;
+           ctx.fillRect(player.x, player.y, player.width, player.height);
+       }
+
+       // Tegne kulene
+       function drawBullets() {
+           ctx.fillStyle = 'yellow';
+           bullets.forEach(bullet => {
+               ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+           });
+       }
+
+       // Tegne fiendene
+       function drawEnemies() {
+           enemies.forEach(enemy => {
+               ctx.fillStyle = enemy.color;
+               ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+           });
+       }
+
+       // Bevege kulene
+       function moveBullets() {
+           bullets.forEach(bullet => {
+               bullet.y -= bulletSpeed;
+           });
+       }
+
+       // Bevege fiendene
+       function moveEnemies() {
+           enemies.forEach(enemy => {
+               enemy.y += enemy.speed;
+           });
+       }
+
+       // Kollisjonsdeteksjon
+       function detectCollisions() {
+           for (let i = 0; i < bullets.length; i++) {
+               for (let j = 0; j < enemies.length; j++) {
+                   if (bullets[i].x < enemies[j].x + enemies[j].width &&
+                       bullets[i].x + bullets[i].width > enemies[j].x &&
+                       bullets[i].y < enemies[j].y + enemies[j].height &&
+                       bullets[i].y + bullets[i].height > enemies[j].y) {
+                       // Kule treffer fiende
+                       bullets.splice(i, 1);
+                       enemies.splice(j, 1);
+                       score += 10;
+                       document.getElementById('score').textContent = `Poeng: ${score}`;
+                       break;
+                   }
+               }
+           }
+       }
+
+       // Oppdater spillet
+       function update() {
+           ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+           drawPlayer();
+           drawBullets();
+           drawEnemies();
+
+           moveBullets();
+           moveEnemies();
+           detectCollisions();
+
+           requestAnimationFrame(update);
+       }
+
+       // Spilleren kan bevege seg
+       document.addEventListener("keydown", (e) => {
+           if (e.key === "ArrowLeft" && player.x > 0) {
+               player.x -= player.speed;
+           } else if (e.key === "ArrowRight" && player.x < canvas.width - player.width) {
+               player.x += player.speed;
+           }
+       });
+
+       // Skytte
+       document.addEventListener("keydown", (e) => {
+           if (e.key === " ") {
+               const bullet = {
+                   x: player.x + player.width / 2 - 2.5,
+                   y: player.y,
+                   width: 5,
+                   height: 10
+               };
+               bullets.push(bullet);
+           }
+       });
+
+       // Lag fiender regelmessig
+       setInterval(createEnemy, 1000);
+
+       // Start spillet
+       update();
+   </script>
+</body>
+</html>
