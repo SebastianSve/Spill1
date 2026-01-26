@@ -1,167 +1,538 @@
 <!DOCTYPE html>
 <html lang="no">
 <head>
-   <meta charset="UTF-8">
-   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-   <title>Skytespill i byen</title>
-   <style>
-       body {
-           margin: 0;
-           overflow: hidden;
-           background-color: #87CEEB; /* Solskinnsdag bakgrunn */
-       }
-       canvas {
-           display: block;
-       }
-       #score {
-           position: absolute;
-           top: 10px;
-           left: 10px;
-           font-size: 24px;
-           color: black;
-       }
-   </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skytespill i byen – v12345678</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #hud {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 20px;
+            z-index: 10;
+        }
+        #hud span {
+            margin-right: 20px;
+        }
+        #gameOverScreen {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            z-index: 20;
+            display: none;
+        }
+        #gameOverScreen button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 20px;
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body>
-   <div id="score">Poeng: 0</div>
-   <canvas id="gameCanvas"></canvas>
+    <div id="hud">
+        <span id="score">Poeng: 0</span>
+        <span id="lives">Liv: 3</span>
+        <span id="level">Vanskelighet: 1</span>
+    </div>
+    <div id="gameOverScreen">
+        <div id="gameOverText">Game Over</div>
+        <button id="restartBtn">Spill igjen</button>
+    </div>
+    <canvas id="gameCanvas"></canvas>
 
-   <script>
-       const canvas = document.getElementById("gameCanvas");
-       const ctx = canvas.getContext("2d");
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
 
-       // Justere canvas-størrelse til vinduets størrelse
-       canvas.width = window.innerWidth;
-       canvas.height = window.innerHeight;
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener("resize", resizeCanvas);
 
-       let score = 0;
+        // HUD
+        const scoreEl = document.getElementById("score");
+        const livesEl = document.getElementById("lives");
+        const levelEl = document.getElementById("level");
+        const gameOverScreen = document.getElementById("gameOverScreen");
+        const gameOverText = document.getElementById("gameOverText");
+        const restartBtn = document.getElementById("restartBtn");
 
-       // Spillerens egenskaper
-       const player = {
-           x: canvas.width / 2 - 25,
-           y: canvas.height - 100,
-           width: 50,
-           height: 50,
-           speed: 5,
-           color: 'green'
-       };
+        // Spilltilstand
+        let score = 0;
+        let lives = 3;
+        let level = 1;
+        let gameOver = false;
 
-       const bullets = [];
-       const bulletSpeed = 7;
+        // Bilder (kan byttes ut med faktiske filer)
+        const bgImg = new Image();
+        bgImg.src = ""; // legg inn bakgrunnsbilde om du vil
 
-       const enemies = [];
-       const enemySpeed = 2;
+        const playerImg = new Image();
+        playerImg.src = ""; // legg inn spillerbilde om du vil
 
-       // Lag fiende
-       function createEnemy() {
-           const enemy = {
-               x: Math.random() * canvas.width,
-               y: -50,
-               width: 50,
-               height: 50,
-               speed: enemySpeed,
-               color: 'red'
-           };
-           enemies.push(enemy);
-       }
+        const enemyImg = new Image();
+        enemyImg.src = ""; // legg inn fiendebilde om du vil
 
-       // Tegne spilleren
-       function drawPlayer() {
-           ctx.fillStyle = player.color;
-           ctx.fillRect(player.x, player.y, player.width, player.height);
-       }
+        const powerupImg = new Image();
+        powerupImg.src = ""; // legg inn powerup-bilde om du vil
 
-       // Tegne kulene
-       function drawBullets() {
-           ctx.fillStyle = 'yellow';
-           bullets.forEach(bullet => {
-               ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
-           });
-       }
+        // Lyd (legg inn faktiske filer om du vil)
+        const shootSound = new Audio();
+        const explosionSound = new Audio();
+        shootSound.src = "";     // f.eks. "shoot.wav"
+        explosionSound.src = ""; // f.eks. "explosion.wav"
 
-       // Tegne fiendene
-       function drawEnemies() {
-           enemies.forEach(enemy => {
-               ctx.fillStyle = enemy.color;
-               ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
-           });
-       }
+        // Bakgrunn
+        let bgY = 0;
+        const bgSpeed = 1;
 
-       // Bevege kulene
-       function moveBullets() {
-           bullets.forEach(bullet => {
-               bullet.y -= bulletSpeed;
-           });
-       }
+        function drawBackground() {
+            bgY += bgSpeed;
+            if (bgY >= canvas.height) bgY = 0;
 
-       // Bevege fiendene
-       function moveEnemies() {
-           enemies.forEach(enemy => {
-               enemy.y += enemy.speed;
-           });
-       }
+            if (bgImg.src) {
+                ctx.drawImage(bgImg, 0, bgY, canvas.width, canvas.height);
+                ctx.drawImage(bgImg, 0, bgY - canvas.height, canvas.width, canvas.height);
+            } else {
+                // fallback: enkel gradient
+                const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                grad.addColorStop(0, "#87CEEB");
+                grad.addColorStop(1, "#ffffff");
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+        }
 
-       // Kollisjonsdeteksjon
-       function detectCollisions() {
-           for (let i = 0; i < bullets.length; i++) {
-               for (let j = 0; j < enemies.length; j++) {
-                   if (bullets[i].x < enemies[j].x + enemies[j].width &&
-                       bullets[i].x + bullets[i].width > enemies[j].x &&
-                       bullets[i].y < enemies[j].y + enemies[j].height &&
-                       bullets[i].y + bullets[i].height > enemies[j].y) {
-                       // Kule treffer fiende
-                       bullets.splice(i, 1);
-                       enemies.splice(j, 1);
-                       score += 10;
-                       document.getElementById('score').textContent = `Poeng: ${score}`;
-                       break;
-                   }
-               }
-           }
-       }
+        // Spiller
+        const player = {
+            x: canvas.width / 2 - 25,
+            y: canvas.height - 100,
+            width: 50,
+            height: 50,
+            speed: 7,
+            color: "green",
+            canShoot: true,
+            shootCooldown: 200, // ms
+            lastShot: 0,
+            tripleShot: false,
+            tripleShotTimer: 0
+        };
 
-       // Oppdater spillet
-       function update() {
-           ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Kuler
+        const bullets = [];
+        const bulletSpeed = 10;
 
-           drawPlayer();
-           drawBullets();
-           drawEnemies();
+        // Fiender
+        const enemies = [];
+        let enemyBaseSpeed = 2;
+        let enemySpawnInterval = 1000;
+        let enemySpawnTimer = 0;
 
-           moveBullets();
-           moveEnemies();
-           detectCollisions();
+        // Eksplosjoner
+        const explosions = [];
 
-           requestAnimationFrame(update);
-       }
+        // Powerups
+        const powerups = [];
+        const powerupChance = 0.2; // 20% sjanse når fiende dør
 
-       // Spilleren kan bevege seg
-       document.addEventListener("keydown", (e) => {
-           if (e.key === "ArrowLeft" && player.x > 0) {
-               player.x -= player.speed;
-           } else if (e.key === "ArrowRight" && player.x < canvas.width - player.width) {
-               player.x += player.speed;
-           }
-       });
+        // Input
+        const keys = {};
+        document.addEventListener("keydown", (e) => {
+            keys[e.key] = true;
+        });
+        document.addEventListener("keyup", (e) => {
+            keys[e.key] = false;
+        });
 
-       // Skytte
-       document.addEventListener("keydown", (e) => {
-           if (e.key === " ") {
-               const bullet = {
-                   x: player.x + player.width / 2 - 2.5,
-                   y: player.y,
-                   width: 5,
-                   height: 10
-               };
-               bullets.push(bullet);
-           }
-       });
+        // Skyting
+        function shoot(timestamp) {
+            if (!player.canShoot) return;
+            if (timestamp - player.lastShot < player.shootCooldown) return;
 
-       // Lag fiender regelmessig
-       setInterval(createEnemy, 1000);
+            player.lastShot = timestamp;
 
-       // Start spillet
-       update();
-   </script>
+            const centerX = player.x + player.width / 2;
+            const baseBullet = () => ({
+                x: centerX - 2.5,
+                y: player.y,
+                width: 5,
+                height: 12,
+                vy: -bulletSpeed
+            });
+
+            if (player.tripleShot) {
+                bullets.push({ ...baseBullet(), x: centerX - 15 });
+                bullets.push(baseBullet());
+                bullets.push({ ...baseBullet(), x: centerX + 10 });
+            } else {
+                bullets.push(baseBullet());
+            }
+
+            if (shootSound.src) {
+                shootSound.currentTime = 0;
+                shootSound.play().catch(() => {});
+            }
+        }
+
+        // Lag fiende
+        function createEnemy() {
+            const width = 50;
+            const height = 50;
+            const x = Math.random() * (canvas.width - width);
+            const y = -height;
+            const speed = enemyBaseSpeed + Math.random() * level * 0.5;
+
+            const enemy = {
+                x,
+                y,
+                width,
+                height,
+                speed,
+                color: "red",
+                pattern: Math.random() < 0.5 ? "zigzag" : "follow",
+                offset: Math.random() * 1000
+            };
+            enemies.push(enemy);
+        }
+
+        // Lag powerup
+        function createPowerup(x, y) {
+            const type = "triple"; // kan utvides senere
+            powerups.push({
+                x,
+                y,
+                width: 30,
+                height: 30,
+                vy: 2,
+                type,
+                color: "gold"
+            });
+        }
+
+        // Eksplosjon
+        function createExplosion(x, y) {
+            explosions.push({
+                x,
+                y,
+                radius: 1,
+                max: 25
+            });
+            if (explosionSound.src) {
+                explosionSound.currentTime = 0;
+                explosionSound.play().catch(() => {});
+            }
+        }
+
+        function drawPlayer() {
+            if (playerImg.src) {
+                ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+            } else {
+                ctx.fillStyle = player.color;
+                ctx.fillRect(player.x, player.y, player.width, player.height);
+            }
+        }
+
+        function drawBullets() {
+            ctx.fillStyle = "yellow";
+            bullets.forEach(b => {
+                ctx.fillRect(b.x, b.y, b.width, b.height);
+            });
+        }
+
+        function drawEnemies() {
+            enemies.forEach(enemy => {
+                if (enemyImg.src) {
+                    ctx.drawImage(enemyImg, enemy.x, enemy.y, enemy.width, enemy.height);
+                } else {
+                    ctx.fillStyle = enemy.color;
+                    ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+                }
+            });
+        }
+
+        function drawPowerups() {
+            powerups.forEach(p => {
+                if (powerupImg.src) {
+                    ctx.drawImage(powerupImg, p.x, p.y, p.width, p.height);
+                } else {
+                    ctx.fillStyle = p.color;
+                    ctx.fillRect(p.x, p.y, p.width, p.height);
+                }
+            });
+        }
+
+        function drawExplosions() {
+            explosions.forEach((ex, i) => {
+                ctx.beginPath();
+                ctx.arc(ex.x, ex.y, ex.radius, 0, Math.PI * 2);
+                const alpha = 1 - ex.radius / ex.max;
+                ctx.fillStyle = `rgba(255,165,0,${alpha})`;
+                ctx.fill();
+                ex.radius += 1;
+                if (ex.radius > ex.max) {
+                    explosions.splice(i, 1);
+                }
+            });
+        }
+
+        // Bevegelse
+        function movePlayer() {
+            if (keys["ArrowLeft"] || keys["a"]) {
+                player.x -= player.speed;
+            }
+            if (keys["ArrowRight"] || keys["d"]) {
+                player.x += player.speed;
+            }
+            if (keys["ArrowUp"] || keys["w"]) {
+                player.y -= player.speed;
+            }
+            if (keys["ArrowDown"] || keys["s"]) {
+                player.y += player.speed;
+            }
+
+            // Begrens til skjermen
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+            if (player.y < 0) player.y = 0;
+            if (player.y + player.height > canvas.height) player.y = canvas.height - player.height;
+        }
+
+        function moveBullets() {
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                bullets[i].y += bullets[i].vy;
+                if (bullets[i].y + bullets[i].height < 0) {
+                    bullets.splice(i, 1);
+                }
+            }
+        }
+
+        function moveEnemies(timestamp) {
+            enemies.forEach(enemy => {
+                enemy.y += enemy.speed;
+
+                if (enemy.pattern === "zigzag") {
+                    enemy.x += Math.sin((enemy.y + enemy.offset) / 25) * 2;
+                } else if (enemy.pattern === "follow") {
+                    if (enemy.x + enemy.width / 2 < player.x + player.width / 2) {
+                        enemy.x += 1.5;
+                    } else {
+                        enemy.x -= 1.5;
+                    }
+                }
+
+                // Begrens horisontalt
+                if (enemy.x < 0) enemy.x = 0;
+                if (enemy.x + enemy.width > canvas.width) enemy.x = canvas.width - enemy.width;
+            });
+
+            // Fiende når bunnen
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                if (enemies[i].y > canvas.height) {
+                    enemies.splice(i, 1);
+                    loseLife();
+                }
+            }
+        }
+
+        function movePowerups() {
+            for (let i = powerups.length - 1; i >= 0; i--) {
+                powerups[i].y += powerups[i].vy;
+                if (powerups[i].y > canvas.height) {
+                    powerups.splice(i, 1);
+                }
+            }
+        }
+
+        // Kollisjoner
+        function rectsCollide(a, b) {
+            return (
+                a.x < b.x + b.width &&
+                a.x + a.width > b.x &&
+                a.y < b.y + b.height &&
+                a.y + a.height > b.y
+            );
+        }
+
+        function detectCollisions() {
+            // Kuler vs fiender
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                for (let j = enemies.length - 1; j >= 0; j--) {
+                    if (rectsCollide(bullets[i], enemies[j])) {
+                        const exX = enemies[j].x + enemies[j].width / 2;
+                        const exY = enemies[j].y + enemies[j].height / 2;
+                        createExplosion(exX, exY);
+
+                        // Powerup-sjanse
+                        if (Math.random() < powerupChance) {
+                            createPowerup(exX - 15, exY - 15);
+                        }
+
+                        bullets.splice(i, 1);
+                        enemies.splice(j, 1);
+                        score += 10;
+                        updateHUD();
+                        break;
+                    }
+                }
+            }
+
+            // Fiender vs spiller
+            for (let j = enemies.length - 1; j >= 0; j--) {
+                if (rectsCollide(enemies[j], player)) {
+                    const exX = enemies[j].x + enemies[j].width / 2;
+                    const exY = enemies[j].y + enemies[j].height / 2;
+                    createExplosion(exX, exY);
+                    enemies.splice(j, 1);
+                    loseLife();
+                }
+            }
+
+            // Powerups vs spiller
+            for (let i = powerups.length - 1; i >= 0; i--) {
+                if (rectsCollide(powerups[i], player)) {
+                    applyPowerup(powerups[i].type);
+                    powerups.splice(i, 1);
+                }
+            }
+        }
+
+        function applyPowerup(type) {
+            if (type === "triple") {
+                player.tripleShot = true;
+                player.tripleShotTimer = Date.now() + 8000; // 8 sekunder
+            }
+        }
+
+        function updatePowerupsState() {
+            if (player.tripleShot && Date.now() > player.tripleShotTimer) {
+                player.tripleShot = false;
+            }
+        }
+
+        // Liv og game over
+        function loseLife() {
+            lives--;
+            updateHUD();
+            if (lives <= 0) {
+                endGame();
+            }
+        }
+
+        function endGame() {
+            gameOver = true;
+            gameOverText.textContent = `Game Over! Poeng: ${score}`;
+            gameOverScreen.style.display = "flex";
+        }
+
+        restartBtn.addEventListener("click", () => {
+            resetGame();
+        });
+
+        function resetGame() {
+            score = 0;
+            lives = 3;
+            level = 1;
+            enemyBaseSpeed = 2;
+            enemySpawnInterval = 1000;
+            bullets.length = 0;
+            enemies.length = 0;
+            explosions.length = 0;
+            powerups.length = 0;
+            player.x = canvas.width / 2 - player.width / 2;
+            player.y = canvas.height - 100;
+            player.tripleShot = false;
+            gameOver = false;
+            updateHUD();
+            gameOverScreen.style.display = "none";
+            lastTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function updateHUD() {
+            scoreEl.textContent = `Poeng: ${score}`;
+            livesEl.textContent = `Liv: ${lives}`;
+            levelEl.textContent = `Vanskelighet: ${level}`;
+        }
+
+        // Vanskelighetsgrad
+        let difficultyTimer = 0;
+        const difficultyInterval = 8000; // øk vanskelighet hvert 8. sekund
+
+        function updateDifficulty(delta) {
+            difficultyTimer += delta;
+            if (difficultyTimer >= difficultyInterval) {
+                difficultyTimer = 0;
+                level++;
+                enemyBaseSpeed += 0.4;
+                enemySpawnInterval = Math.max(350, enemySpawnInterval - 80);
+                updateHUD();
+            }
+        }
+
+        // Hovedløkke
+        let lastTime = performance.now();
+
+        function gameLoop(timestamp) {
+            if (gameOver) return;
+
+            const delta = timestamp - lastTime;
+            lastTime = timestamp;
+
+            // Input
+            movePlayer();
+            if (keys[" "] || keys["Spacebar"]) {
+                shoot(timestamp);
+            }
+
+            // Oppdater
+            enemySpawnTimer += delta;
+            if (enemySpawnTimer >= enemySpawnInterval) {
+                enemySpawnTimer = 0;
+                createEnemy();
+            }
+
+            moveBullets();
+            moveEnemies(timestamp);
+            movePowerups();
+            updatePowerupsState();
+            detectCollisions();
+            updateDifficulty(delta);
+
+            // Tegn
+            drawBackground();
+            drawPlayer();
+            drawBullets();
+            drawEnemies();
+            drawPowerups();
+            drawExplions = drawExplosions();
+            drawExplosions();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start
+        updateHUD();
+        requestAnimationFrame(gameLoop);
+    </script>
 </body>
 </html>
