@@ -2,477 +2,304 @@
 <html lang="no">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Neon Defender - Skyt Fiendene</title>
+    <title>Romskip Skytespill</title>
     <style>
         body {
-            margin: 0;
-            padding: 0;
-            background-color: #050505;
-            color: white;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            overflow: hidden; /* Hindre scrolling */
+            background-color: #1a1a1a; /* Mørk grå bakgrunn */
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            color: white;
+            overflow: hidden;
         }
 
-        #gameContainer {
+        #spillContainer {
             position: relative;
-            box-shadow: 0 0 50px rgba(0, 255, 255, 0.2);
+            box-shadow: 0 0 30px rgba(0, 255, 0, 0.3);
         }
 
         canvas {
-            background-color: #111;
-            border: 2px solid #333;
-            border-radius: 4px;
+            background-color: #000000;
+            border: 4px solid #333;
             display: block;
         }
 
-        #ui-layer {
+        #ui {
             position: absolute;
-            top: 20px;
-            left: 20px;
-            pointer-events: none; /* Lar oss klikke gjennom UI */
-            font-size: 20px;
+            top: 10px;
+            left: 10px;
+            font-size: 24px;
             font-weight: bold;
-            text-shadow: 0 0 5px cyan;
+            pointer-events: none;
         }
 
-        #gameOverScreen {
+        #startSkjerm {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
             text-align: center;
-            background: rgba(0, 0, 0, 0.85);
+            background: rgba(0, 0, 0, 0.9);
             padding: 40px;
-            border: 2px solid cyan;
+            border: 2px solid lime;
             border-radius: 10px;
-            display: none; /* Skjult som standard */
-            box-shadow: 0 0 20px cyan;
         }
 
-        h1 { margin-top: 0; color: #ff0055; text-shadow: 0 0 10px #ff0055; }
-        
         button {
-            background: cyan;
+            background-color: lime;
+            color: black;
             border: none;
             padding: 15px 30px;
-            font-size: 18px;
+            font-size: 20px;
             font-weight: bold;
             cursor: pointer;
-            border-radius: 5px;
-            transition: 0.2s;
             margin-top: 20px;
+            border-radius: 5px;
         }
 
         button:hover {
-            background: white;
-            box-shadow: 0 0 15px cyan;
-        }
-
-        .controls-hint {
-            position: absolute;
-            bottom: 10px;
-            width: 100%;
-            text-align: center;
-            color: #666;
-            font-size: 14px;
-            pointer-events: none;
+            background-color: white;
         }
     </style>
 </head>
 <body>
 
-    <div id="gameContainer">
-        <canvas id="spillCanvas" width="600" height="800"></canvas>
-        
-        <div id="ui-layer">
-            <div>Poeng: <span id="scoreDisplay">0</span></div>
-            <div style="font-size: 14px; color: #aaa; margin-top: 5px;">Høyeste score: <span id="highScoreDisplay">0</span></div>
-            <div id="powerUpText" style="color: yellow; margin-top: 10px; opacity: 0;">TRIPPELSKUDD!</div>
-        </div>
+<div id="spillContainer">
+    <canvas id="canvas" width="600" height="800"></canvas>
+    <div id="ui">Poeng: <span id="poengTeller">0</span></div>
 
-        <div id="gameOverScreen">
-            <h1>GAME OVER</h1>
-            <p>Du fikk <span id="finalScore">0</span> poeng</p>
-            <button onclick="startSpill()">Prøv igjen</button>
-        </div>
-        
-        <div class="controls-hint">Bruk PILTASTER for å flytte • MELLOMROM for å skyte</div>
+    <div id="startSkjerm">
+        <h1 style="color: lime; margin: 0 0 10px 0;">ROMSKIP FORSVAR</h1>
+        <p>Bruk ⬅️ og ➡️ for å styre.</p>
+        <p>Trykk <strong>MELLOMROM</strong> for å skyte.</p>
+        <button onclick="startSpillet()">START SPILL</button>
     </div>
+</div>
 
 <script>
-    const canvas = document.getElementById('spillCanvas');
+    const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    
-    // Spilltilstand
+    const startSkjerm = document.getElementById('startSkjerm');
+    const poengTeller = document.getElementById('poengTeller');
+
+    // Spillvariabler
     let spillErIgang = false;
     let poeng = 0;
-    let frameCount = 0;
-    let highScore = localStorage.getItem('neonDefenderHighScore') || 0;
-    document.getElementById('highScoreDisplay').innerText = highScore;
+    let fiendeTimer = 0;
+    
+    // Lister for objekter
+    let skuddListe = [];
+    let fiendeListe = [];
+    let partikler = [];
 
-    // Input håndtering
-    const keys = {};
-    window.addEventListener('keydown', e => keys[e.code] = true);
-    window.addEventListener('keyup', e => {
-        keys[e.code] = false;
-        if (e.code === 'Space' && spillErIgang) {
-            spiller.skyt();
+    // Tastatur input
+    const keys = {
+        ArrowLeft: false,
+        ArrowRight: false,
+        Space: false
+    };
+
+    window.addEventListener('keydown', (e) => {
+        if(e.code === 'ArrowLeft') keys.ArrowLeft = true;
+        if(e.code === 'ArrowRight') keys.ArrowRight = true;
+        if(e.code === 'Space') {
+            if(spillErIgang && !keys.Space) { // Hindre "holding" for maskingevær
+                spiller.skyt();
+            }
+            keys.Space = true;
         }
     });
 
-    // Klasser
-    class Spiller {
-        constructor() {
-            this.width = 40;
-            this.height = 40;
-            this.x = canvas.width / 2 - this.width / 2;
-            this.y = canvas.height - 60;
-            this.color = '#00ffff';
-            this.speed = 7;
-            this.powerUpType = null;
-            this.powerUpTimer = 0;
-            this.harSkjold = false;
-        }
+    window.addEventListener('keyup', (e) => {
+        if(e.code === 'ArrowLeft') keys.ArrowLeft = false;
+        if(e.code === 'ArrowRight') keys.ArrowRight = false;
+        if(e.code === 'Space') keys.Space = false;
+    });
 
-        update() {
-            // Bevegelse
-            if (keys['ArrowLeft'] && this.x > 0) this.x -= this.speed;
-            if (keys['ArrowRight'] && this.x + this.width < canvas.width) this.x += this.speed;
+    // SPILLER OBJEKTET
+    const spiller = {
+        x: 300 - 25, // Start midt på (bredde/2)
+        y: 700,
+        width: 50,
+        height: 50,
+        farge: '#00FF00', // STERK GRØNN FARGE
+        speed: 7,
 
-            // Powerup timer
-            if (this.powerUpTimer > 0) {
-                this.powerUpTimer--;
-                if (this.powerUpTimer <= 0) {
-                    this.powerUpType = null;
-                    document.getElementById('powerUpText').style.opacity = 0;
-                }
-            }
-        }
+        update: function() {
+            if (keys.ArrowLeft && this.x > 0) this.x -= this.speed;
+            if (keys.ArrowRight && this.x + this.width < canvas.width) this.x += this.speed;
+        },
 
-        draw() {
-            ctx.save();
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = this.color;
-            ctx.fillStyle = this.color;
+        draw: function() {
+            ctx.fillStyle = this.farge;
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = this.farge;
             
-            // Tegn skip (trekant)
+            // Tegner en trekant (Romskipet)
             ctx.beginPath();
-            ctx.moveTo(this.x + this.width/2, this.y);
-            ctx.lineTo(this.x + this.width, this.y + this.height);
-            ctx.lineTo(this.x, this.y + this.height);
+            ctx.moveTo(this.x + this.width / 2, this.y); // Toppen
+            ctx.lineTo(this.x + this.width, this.y + this.height); // Høyre hjørne
+            ctx.lineTo(this.x, this.y + this.height); // Venstre hjørne
+            ctx.closePath();
             ctx.fill();
-
-            // Tegn skjold hvis aktivt
-            if (this.harSkjold) {
-                ctx.strokeStyle = 'rgba(0, 100, 255, 0.7)';
-                ctx.lineWidth = 3;
-                ctx.beginPath();
-                ctx.arc(this.x + this.width/2, this.y + this.height/2, 35, 0, Math.PI * 2);
-                ctx.stroke();
-            }
-            ctx.restore();
-        }
-
-        skyt() {
-            if (this.powerUpType === 'trippel') {
-                skuddListe.push(new Skudd(this.x + this.width / 2, this.y, 0));
-                skuddListe.push(new Skudd(this.x + this.width / 2, this.y, -1)); // Venstre
-                skuddListe.push(new Skudd(this.x + this.width / 2, this.y, 1));  // Høyre
-            } else {
-                skuddListe.push(new Skudd(this.x + this.width / 2, this.y, 0));
-            }
-        }
-        
-        aktiverPowerUp(type) {
-            if (type === 'skjold') {
-                this.harSkjold = true;
-                visTekst("SKJOLD AKTIVERT", "#0088ff");
-            } else if (type === 'trippel') {
-                this.powerUpType = 'trippel';
-                this.powerUpTimer = 600; // Varer i ca 10 sekunder (60fps)
-                visTekst("TRIPPELSKUDD!", "#ffff00");
-            }
-        }
-    }
-
-    class Skudd {
-        constructor(x, y, dx) {
-            this.x = x;
-            this.y = y;
-            this.radius = 4;
-            this.speed = 10;
-            this.dx = dx * 2; // Spredning
-            this.markedForDeletion = false;
-        }
-        update() {
-            this.y -= this.speed;
-            this.x += this.dx;
-            if (this.y < 0) this.markedForDeletion = true;
-        }
-        draw() {
-            ctx.save();
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = 'yellow';
-            ctx.fillStyle = '#ffff00';
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-        }
-    }
-
-    class Fiende {
-        constructor() {
-            this.width = 40;
-            this.height = 40;
-            this.x = Math.random() * (canvas.width - this.width);
-            this.y = -this.height;
-            // Fiender blir raskere jo flere poeng du har
-            this.speed = Math.random() * 2 + 2 + (poeng / 500); 
-            this.color = '#ff0055';
-            this.markedForDeletion = false;
-        }
-        update() {
-            this.y += this.speed;
-            if (this.y > canvas.height) {
-                this.markedForDeletion = true;
-                // Trekk poeng hvis fienden slipper forbi? Nei, la oss holde det enkelt.
-            }
-        }
-        draw() {
-            ctx.save();
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = this.color;
-            ctx.fillStyle = this.color;
-            ctx.fillRect(this.x, this.y, this.width, this.height);
             
-            // Øyne for å se slem ut
-            ctx.fillStyle = 'black';
-            ctx.fillRect(this.x + 8, this.y + 10, 8, 8);
-            ctx.fillRect(this.x + 24, this.y + 10, 8, 8);
-            ctx.restore();
+            ctx.shadowBlur = 0; // Skru av glød for andre ting
+        },
+
+        skyt: function() {
+            // Legg til nytt skudd i listen
+            skuddListe.push({
+                x: this.x + this.width / 2 - 2.5, // Sentrert
+                y: this.y,
+                width: 5,
+                height: 20,
+                color: '#FFFF00', // Gult skudd
+                speed: 12
+            });
+        }
+    };
+
+    // PARTIKKEL EFFEKT (Eksplosjon)
+    function lagEksplosjon(x, y, farge) {
+        for(let i=0; i<8; i++){
+            partikler.push({
+                x: x,
+                y: y,
+                vx: (Math.random() - 0.5) * 10,
+                vy: (Math.random() - 0.5) * 10,
+                life: 1.0,
+                color: farge
+            });
         }
     }
 
-    class Partikkel {
-        constructor(x, y, color) {
-            this.x = x;
-            this.y = y;
-            this.size = Math.random() * 5 + 2;
-            this.speedX = Math.random() * 6 - 3;
-            this.speedY = Math.random() * 6 - 3;
-            this.color = color;
-            this.markedForDeletion = false;
-            this.life = 1.0; // Opacity
-        }
-        update() {
-            this.x += this.speedX;
-            this.y += this.speedY;
-            this.life -= 0.02;
-            if (this.life <= 0) this.markedForDeletion = true;
-        }
-        draw() {
-            ctx.save();
-            ctx.globalAlpha = this.life;
-            ctx.fillStyle = this.color;
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-        }
-    }
-    
-    class PowerUpItem {
-        constructor() {
-            this.size = 20;
-            this.x = Math.random() * (canvas.width - this.size);
-            this.y = -this.size;
-            this.speed = 3;
-            this.type = Math.random() > 0.5 ? 'skjold' : 'trippel';
-            this.color = this.type === 'skjold' ? '#0088ff' : '#ffff00';
-            this.markedForDeletion = false;
-            this.angle = 0;
-        }
-        update() {
-            this.y += this.speed;
-            this.angle += 0.1;
-            if (this.y > canvas.height) this.markedForDeletion = true;
-        }
-        draw() {
-            ctx.save();
-            ctx.translate(this.x + this.size/2, this.y + this.size/2);
-            ctx.rotate(this.angle);
-            ctx.fillStyle = this.color;
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = this.color;
-            ctx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
-            ctx.restore();
-            
-            // Tegn ikon (S eller T)
-            ctx.fillStyle = 'black';
-            ctx.font = 'bold 12px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(this.type === 'skjold' ? 'S' : 'T', this.x + this.size/2, this.y + this.size/2);
-        }
-    }
-
-    // Variabler for lister
-    let spiller;
-    let skuddListe = [];
-    let fiendeListe = [];
-    let partikkelListe = [];
-    let powerUpListe = [];
-    let fiendeTimer = 0;
-
-    function startSpill() {
-        spiller = new Spiller();
+    function startSpillet() {
+        // Nullstill alt
+        spiller.x = canvas.width / 2 - 25;
+        poeng = 0;
         skuddListe = [];
         fiendeListe = [];
-        partikkelListe = [];
-        powerUpListe = [];
-        poeng = 0;
-        document.getElementById('scoreDisplay').innerText = poeng;
-        document.getElementById('gameOverScreen').style.display = 'none';
+        partikler = [];
+        poengTeller.innerText = "0";
         spillErIgang = true;
-        animate();
+        startSkjerm.style.display = 'none';
+        
+        gameLoop();
     }
 
-    function lagEksplosjon(x, y, color) {
-        for (let i = 0; i < 10; i++) {
-            partikkelListe.push(new Partikkel(x, y, color));
-        }
-    }
-    
-    function visTekst(tekst, farge) {
-        const el = document.getElementById('powerUpText');
-        el.innerText = tekst;
-        el.style.color = farge;
-        el.style.opacity = 1;
-        el.style.textShadow = `0 0 10px ${farge}`;
-    }
-
-    function sjekkKollisjon(rect1, rect2) {
-        return (
-            rect1.x < rect2.x + rect2.width &&
-            rect1.x + rect1.width > rect2.x &&
-            rect1.y < rect2.y + rect2.height &&
-            rect1.y + rect1.height > rect2.y
-        );
-    }
-
-    function avsluttSpill() {
+    function gameOver() {
         spillErIgang = false;
-        document.getElementById('gameOverScreen').style.display = 'block';
-        document.getElementById('finalScore').innerText = poeng;
-        
-        if (poeng > highScore) {
-            highScore = poeng;
-            localStorage.setItem('neonDefenderHighScore', highScore);
-            document.getElementById('highScoreDisplay').innerText = highScore;
-        }
+        startSkjerm.innerHTML = `
+            <h1 style="color: red;">GAME OVER</h1>
+            <p>Du fikk ${poeng} poeng!</p>
+            <button onclick="startSpillet()">PRØV IGJEN</button>
+        `;
+        startSkjerm.style.display = 'block';
     }
 
-    function animate() {
+    function gameLoop() {
         if (!spillErIgang) return;
-        
+
+        // 1. Tøm skjermen
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // --- Spiller ---
+
+        // 2. Oppdater og tegn spiller
         spiller.update();
         spiller.draw();
 
-        // --- Skudd ---
-        skuddListe.forEach(skudd => {
-            skudd.update();
-            skudd.draw();
-        });
-        skuddListe = skuddListe.filter(s => !s.markedForDeletion);
-
-        // --- Fiender ---
-        fiendeTimer++;
-        // Spawn rate: Raskere jo høyere score (men aldri raskere enn hvert 20. frame)
-        let spawnRate = Math.max(20, 60 - Math.floor(poeng / 50));
-        
-        if (fiendeTimer % spawnRate === 0) {
-            fiendeListe.push(new Fiende());
-        }
-
-        fiendeListe.forEach(fiende => {
-            fiende.update();
-            fiende.draw();
-
-            // Sjekk om fiende treffer spiller
-            if (sjekkKollisjon(spiller, fiende)) {
-                if (spiller.harSkjold) {
-                    spiller.harSkjold = false;
-                    fiende.markedForDeletion = true;
-                    lagEksplosjon(fiende.x + fiende.width/2, fiende.y + fiende.height/2, 'cyan');
-                } else {
-                    avsluttSpill();
-                }
-            }
-
-            // Sjekk om skudd treffer fiende
-            skuddListe.forEach(skudd => {
-                // Enkel sirkel-til-rektangel kollisjon approksimering
-                if (
-                    skudd.x > fiende.x && 
-                    skudd.x < fiende.x + fiende.width &&
-                    skudd.y > fiende.y && 
-                    skudd.y < fiende.y + fiende.height
-                ) {
-                    fiende.markedForDeletion = true;
-                    skudd.markedForDeletion = true;
-                    poeng += 10;
-                    document.getElementById('scoreDisplay').innerText = poeng;
-                    lagEksplosjon(fiende.x + fiende.width/2, fiende.y + fiende.height/2, '#ff0055');
-                }
-            });
-        });
-        fiendeListe = fiendeListe.filter(f => !f.markedForDeletion);
-
-        // --- PowerUps ---
-        // 0.2% sjanse hver frame for en powerup
-        if (Math.random() < 0.002) {
-            powerUpListe.push(new PowerUpItem());
-        }
-        
-        powerUpListe.forEach(p => {
-            p.update();
-            p.draw();
+        // 3. Håndter Skudd
+        for (let i = skuddListe.length - 1; i >= 0; i--) {
+            let s = skuddListe[i];
+            s.y -= s.speed;
             
-            // Kollisjon med spiller (enkel boks)
-            if (
-                spiller.x < p.x + p.size &&
-                spiller.x + spiller.width > p.x &&
-                spiller.y < p.y + p.size &&
-                spiller.y + spiller.height > p.y
-            ) {
-                spiller.aktiverPowerUp(p.type);
-                p.markedForDeletion = true;
+            ctx.fillStyle = s.color;
+            ctx.fillRect(s.x, s.y, s.width, s.height);
+
+            // Fjern hvis utenfor skjermen
+            if (s.y < 0) skuddListe.splice(i, 1);
+        }
+
+        // 4. Lag Fiender (Spawn)
+        fiendeTimer++;
+        if (fiendeTimer > 50) { // Hvor ofte fiender kommer
+            fiendeListe.push({
+                x: Math.random() * (canvas.width - 40),
+                y: -40,
+                width: 40,
+                height: 40,
+                speed: 3 + (poeng / 100), // Blir raskere etterhvert
+                color: 'red'
+            });
+            fiendeTimer = 0;
+        }
+
+        // 5. Oppdater Fiender og Kollisjoner
+        for (let i = fiendeListe.length - 1; i >= 0; i--) {
+            let f = fiendeListe[i];
+            f.y += f.speed;
+
+            // Tegn fiende (Firkant med øyne)
+            ctx.fillStyle = f.color;
+            ctx.fillRect(f.x, f.y, f.width, f.height);
+            ctx.fillStyle = "black"; // Øyne
+            ctx.fillRect(f.x + 10, f.y + 10, 5, 5); 
+            ctx.fillRect(f.x + 25, f.y + 10, 5, 5);
+
+            // Kollisjon: Skudd treffer Fiende
+            for (let j = skuddListe.length - 1; j >= 0; j--) {
+                let s = skuddListe[j];
+                if (s.x < f.x + f.width &&
+                    s.x + s.width > f.x &&
+                    s.y < f.y + f.height &&
+                    s.y + s.height > f.y) {
+                    
+                    // Treff!
+                    lagEksplosjon(f.x + 20, f.y + 20, 'orange');
+                    fiendeListe.splice(i, 1);
+                    skuddListe.splice(j, 1);
+                    poeng += 10;
+                    poengTeller.innerText = poeng;
+                    break; // Gå ut av skudd-løkken
+                }
             }
-        });
-        powerUpListe = powerUpListe.filter(p => !p.markedForDeletion);
 
-        // --- Partikler ---
-        partikkelListe.forEach(p => {
-            p.update();
-            p.draw();
-        });
-        partikkelListe = partikkelListe.filter(p => !p.markedForDeletion);
+            // Kollisjon: Fiende treffer Spiller (Game Over)
+            if (f.x < spiller.x + spiller.width &&
+                f.x + f.width > spiller.x &&
+                f.y < spiller.y + spiller.height &&
+                f.y + f.height > spiller.y) {
+                gameOver();
+            }
 
-        requestAnimationFrame(animate);
+            // Fjern fiende hvis den går forbi bunnen
+            if (f.y > canvas.height) {
+                fiendeListe.splice(i, 1);
+            }
+        }
+
+        // 6. Tegn partikler (eksplosjoner)
+        for (let i = partikler.length - 1; i >= 0; i--) {
+            let p = partikler[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life -= 0.05;
+
+            ctx.globalAlpha = p.life;
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+
+            if (p.life <= 0) partikler.splice(i, 1);
+        }
+
+        requestAnimationFrame(gameLoop);
     }
-
-    // Start spillet ved innlasting
-    startSpill();
-
 </script>
+
 </body>
 </html>
